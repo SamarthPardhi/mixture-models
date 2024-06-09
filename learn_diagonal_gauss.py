@@ -1,3 +1,5 @@
+
+
 import numpy as np
 from cluster_stats_new import gaussianClustersDiag
 import utils
@@ -10,48 +12,60 @@ from sklearn.metrics.cluster import adjusted_rand_score
 from scipy.special import logsumexp
 
 class bayesGMM():
-    def __init__(self, X:np.array, prior:utils.NIchi2, alpha:float, assignments:np.array):
-        
-        """
-        
-        X: 2D array contaning data
-        prior: Bete hyperparameters prior (m_0, k_0, s_0, v_0)
-        alpha: Dirichlet hyperparameters alpha_0
-        assignments: Initial assignmentds
-        
-        """
+    """
+    Bayesian Gaussian Mixture Model (GMM) with diagonal covariance matrices.
 
+    This class implements a Gibbs sampler for Bayesian GMM with diagonal covariance matrices.
+    It initializes the model with given data, prior, and initial cluster assignments, and provides
+    a method to run the Gibbs sampler for a specified number of iterations.
+    """
+
+    def __init__(self, X: np.array, prior: utils.NIchi2, alpha: float, assignments: np.array):
+        """
+        Initialize the Bayesian GMM.
+
+        Args:
+            X (np.array): 2D NumPy array of shape (n_samples, n_features) containing the data.
+            prior (utils.NIchi2): Object representing the prior hyperparameters (m_0, k_0, s_0, v_0).
+            alpha (float): Dirichlet hyperparameter alpha_0.
+            assignments (np.array): 1D NumPy array of shape (n_samples,) containing initial cluster assignments.
+        """
         self.trueZ = []
         self.alpha = alpha
 
         # Initial total number of clusters
         K = len(set(assignments))
         self.K_max = K
-        
-        # Setting up the Gaussian Cluster object which will track the features and component wise statistics
+
+        # Setting up the Gaussian Cluster object which will track the features and component-wise statistics
         self.clusters = gaussianClustersDiag(X, prior, alpha, K, assignments.copy())
-        
-        # Initialising the outputs
+
+        # Initializing the outputs
         self.z_map = assignments
         self.iter_map = 0
-        self.log_max_post = -1*np.inf
+        self.log_max_post = -1 * np.inf
         self.BIC = 0.
         self.run_id = -1
 
-    # The Gibbs Sampler
-    def gibbs_sampler(self, n_iter:int, run_id:int, toPrint=True, savePosterior=False, trueAssignments=[], greedyRun = False):
-
+    def gibbs_sampler(self, n_iter: int, run_id: int, toPrint=True, savePosterior=False, trueAssignments=[], greedyRun=False):
         """
-        
-        n_iter: Number of iterations
-        run_id: Run ID
-        toPrint: If to print the results for each iteration
-        savePosterior: If to save the posterior score for each data step in each iteration
-        trueAssignments: True assignments if we need to calculate the ARI score
-        greedyRun: If we want Greedy Run (Will initialise with previous MAP assignments)
+        Run the Gibbs sampler for the Bayesian GMM.
 
+        Args:
+            n_iter (int): Number of iterations to run the Gibbs sampler.
+            run_id (int): Unique identifier for the current run.
+            toPrint (bool, optional): If True, print the results for each iteration. Default is True.
+            savePosterior (bool, optional): If True, save the posterior score for each data step in each iteration. Default is False.
+            trueAssignments (list, optional): Ground truth cluster assignments for calculating Adjusted Rand Index (ARI). Default is an empty list.
+            greedyRun (bool, optional): If True, initialize with previous MAP assignments. Default is False.
+
+        Returns:
+            dict: A dictionary containing the following keys:
+                - 'run': The run_id value.
+                - 'n_iter': The n_iter value.
+                - 'posterior': A list of posterior probabilities for each iteration (if savePosterior is True).
+                - 'ARI': A list of ARI scores for each iteration (if trueAssignments is provided).
         """
-
         if len(trueAssignments) > 0:
             self.trueZ = trueAssignments
 
@@ -59,69 +73,63 @@ class bayesGMM():
         posteriorList = []
         ARI_list = []
 
-        # If the posterior is same for each iteration, a convergence bound can also be setted
+        # If the posterior is the same for each iteration, a convergence bound can also be set
         same_posterior_count = 0
-
         ass_posterior = 0
 
-        # log posterior probability
+        # Log posterior probability
         log_post_Z = np.zeros(self.K_max)
         for k in range(self.K_max):
             log_post_Z[k] = self.clusters.get_posterior_probability_Z_k(k)
 
-        # if toPrint:
-        #     if len(self.trueZ) != 0:
-        #         print(f"run: {run_id + 1}, iteration:0, K:{self.clusters.K}, posterior:{round(np.sum(log_post_Z), 3)}, ARI: {round(adjusted_rand_score(self.trueZ, self.clusters.assignments), 3)}")
-        #     else:
-        #         print(f"run: {run_id + 1}, iteration:0, K:{self.clusters.K}, posterior:{round(np.sum(log_post_Z), 3)}")
+        # Print initial information if want to
+        if toPrint:
+            if len(self.trueZ) != 0:
+                print(f"run: {run_id + 1}, iteration:0, K:{self.clusters.K}, posterior:{round(np.sum(log_post_Z), 3)}, ARI: {round(adjusted_rand_score(self.trueZ, self.clusters.assignments), 3)}")
+            else:
+                print(f"run: {run_id + 1}, iteration:0, K:{self.clusters.K}, posterior:{round(np.sum(log_post_Z), 3)}")
 
-
-        # Here, we start the algorithm as:
-        # For each iteration
+        # Start the Gibbs sampler
         for i_iter in range(n_iter):
             old_assignments = self.clusters.assignments.copy()
 
             # For each data point
             for i in range(self.clusters.N):
-
-                # If it's a greedy run keep track of the posterior probability
-                if greedyRun == True:                                
+                # If it's a greedy run, keep track of the posterior probability
+                if greedyRun:
                     old_post_prob = 0
                     for k in range(self.K_max):
                         old_post_prob += self.clusters.get_posterior_probability_Z_k(k)
 
-                old_assignments_i = self.clusters.assignments.copy()
-
-                # If the same cluster is assigned to the current data points, we avoid re-computing the statistics by cacheing the previous one
+                # Cache the previous cluster statistics if the same cluster is assigned to the current data point
                 k_old = self.clusters.assignments[i]
                 K_old = self.clusters.K
                 stats_old = self.clusters.cache_cluster_stats(k_old)
                 k_counts_old = self.clusters.counts[k_old]
 
-                # Remove the data point from the data, X[-i]
+                # Remove the data point from the data
                 self.clusters.del_assignment(i)
-                
+
                 # Calculate f(z_i = k | z_[-i], alpha)
-                log_prob_z_k_alpha = np.log(self.clusters.counts + self.alpha / self.clusters.K_max ) - np.log(self.clusters.N + self.alpha - 1)
+                log_prob_z_k_alpha = np.log(self.clusters.counts + self.alpha / self.clusters.K_max) - np.log(self.clusters.N + self.alpha - 1)
 
                 # Calculate f(x_i | X[-i], z_i = k, z_[-i], Beta)
                 log_prob_x_i = self.clusters.log_post_pred(i)
-                
+
                 # Get f(z_i = k | z_[-i])
                 log_prob_z_k = log_prob_z_k_alpha + log_prob_x_i
 
-                # Sampling new cluster identity for the data point
+                # Sample new cluster identity for the data point
                 k_new = np.argmax(log_prob_z_k + np.random.gumbel(0, 1, len(log_prob_z_k)))
 
-                # Tracking the changed clusters
+                # Track the changed clusters
                 changed_ = []
 
-
-                # if an empty cluster is sampled
+                # If an empty cluster is sampled
                 if k_new >= self.clusters.K:
                     k_new = self.clusters.K
 
-                # If the sampled cluster is as same as old and the cluster didn't become empty after that
+                # If the sampled cluster is the same as the old one and the cluster didn't become empty
                 if k_new == k_old and self.clusters.K == K_old:
                     self.clusters.restore_cluster_stats(k_old, *stats_old)
                     self.clusters.assignments[i] = k_old
@@ -136,47 +144,28 @@ class bayesGMM():
 
                 # Check posterior if it's a greedy run
                 if greedyRun and len(changed_) > 0:
-
                     log_post_Z_ = log_post_Z.copy()
                     old_post_i = np.sum(log_post_Z_)
                     for k_i in changed_:
-                        log_post_Z_[k_i] =  self.clusters.get_posterior_probability_Z_k(k_i)
+                        log_post_Z_[k_i] = self.clusters.get_posterior_probability_Z_k(k_i)
 
                     if old_post_i > np.sum(log_post_Z_):
                         if k_counts_old == 1:
                             self.clusters.add_assignment(i, self.clusters.K)
-                        else:    
+                        else:
                             self.clusters.add_assignment(i, k_old)
 
                 # Save log posterior probability
                 if savePosterior:
-
-                    # new_ass = self.clusters.assignments.copy()
-                    # ass_change = old_assignments_i == new_ass
-                    # changed_ = []
-                    # for i_k in range(self.clusters.N):
-                    #     if not ass_change[i_k]:
-                    #         changed_.append(old_assignments_i[i_k])
-                    #         changed_.append(new_ass[i_k])
-                    # changed_ = list(set(changed_))
-                    
-                    # changed_ = [k_old, k_new, self.clusters.K - 1, K_old - 1]
-
-                    # if len(changed_) > 4:
-                    #     print(sorted(changed_))
-                    #     print([k_old, k_new, K_old, self.clusters.K])
-                    #     breakpoint()
-
                     for k in changed_:
-                        log_post_Z[k] =  self.clusters.get_posterior_probability_Z_k(k)
-                    
+                        log_post_Z[k] = self.clusters.get_posterior_probability_Z_k(k)
+
                     posteriorList.append(np.sum(log_post_Z))
 
-                    # Calculate the ARI if you are also given with true assignments
+                    # Calculate the ARI if true assignments are provided
                     if len(self.trueZ) != 0:
-                        ARI_list.append(round(adjusted_rand_score(self.trueZ, self.clusters.assignments), 3))    
+                        ARI_list.append(round(adjusted_rand_score(self.trueZ, self.clusters.assignments), 3))
 
-            
             # Get the list of all changed clusters for the iteration
             new_assignments = self.clusters.assignments
             assignments_change = old_assignments == new_assignments
@@ -213,21 +202,20 @@ class bayesGMM():
             if same_posterior_count > 3:
                 break
 
-            print(f"{i_iter}/{n_iter}               ",end='\r')
+            print(f"{i_iter}/{n_iter}               ", end='\r')
 
-        self.BIC = self.clusters.K*(2*self.clusters.D) * np.log(self.clusters.N) - (2 * self.log_max_post)
+            self.BIC = self.clusters.K * (2 * self.clusters.D) * np.log(self.clusters.N) - (2 * self.log_max_post)
 
-        print(f"\nRun: {run_id + 1}, K:{len(set(self.z_map))}, BIC: {self.BIC}, logmax post: {self.log_max_post}, max_post_iter: {self.iter_map}")
-                
-        postData = {
-            "run":run_id,
-            "n_iter":n_iter,
-            "posterior":posteriorList,
-            "ARI":ARI_list
-        }
+            print(f"\nRun: {run_id + 1}, K:{len(set(self.z_map))}, BIC: {self.BIC}, logmax post: {self.log_max_post}, max_post_iter: {self.iter_map}")
 
-        return postData
-        
+            postData = {
+                "run": run_id,
+                "n_iter": n_iter,
+                "posterior": posteriorList,
+                "ARI": ARI_list
+            }
+
+            return postData                    
 
         
 if __name__ == "__main__":
