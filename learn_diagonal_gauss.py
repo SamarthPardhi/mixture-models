@@ -27,7 +27,7 @@ class bayesGMM():
         Args:
             X (np.array): 2D NumPy array of shape (n_samples, n_features) containing the data.
             prior (utils.NIchi2): Object representing the prior hyperparameters (m_0, k_0, s_0, v_0).
-            alpha (float): Dirichlet hyperparameter alpha_0.
+            alpha (float): Dirichlet hyperparameter for mixing probabilities, alpha_0.
             assignments (np.array): 1D NumPy array of shape (n_samples,) containing initial cluster assignments.
         """
         self.trueZ = []
@@ -216,29 +216,32 @@ class bayesGMM():
             }
 
             return postData                    
-
         
+
 if __name__ == "__main__":
     model_start_time = time.perf_counter()
 
+    # Setup argument parser
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("-f", required=True, type=argparse.FileType('r'), help="Path to the file containing gauusian mixture data")
-    parser.add_argument("-k", required=False, type=int, help="Known K and if it's unknown Maximum number of clusters (Or your guess that the number of clusters can't be more than that)")
+    # Define the required and optional arguments for the script
+    parser.add_argument("-f", required=True, type=argparse.FileType('r'), help="Path to the file containing gaussian mixture data")
+    parser.add_argument("-k", required=False, type=int, help="Known K or the maximum number of clusters")
     parser.add_argument("-o", required=False, type=str, help="Output directory")
-    parser.add_argument("-i", required=False, type=int, help="Collapsed Gibbs sampling iterations")
-    parser.add_argument("-r", required=False, type=int, help="Number of training runs to run with different initial assignments")
+    parser.add_argument("-i", required=False, type=int, help="Number of Gibbs sampling iterations")
+    parser.add_argument("-r", required=False, type=int, help="Number of training runs with different initial assignments")
     parser.add_argument("-t", required=False, type=argparse.FileType('r'), help="Path to the true parameters file (non-pickle file)")
-    parser.add_argument("-p", required=False, action="store_true", help="Will print results while Gibbs sampling")
-    parser.add_argument("-seed", required=False, type=int, help="set a seed value")
+    parser.add_argument("-p", required=False, action="store_true", help="Print results during Gibbs sampling")
+    parser.add_argument("-seed", required=False, type=int, help="Set a seed value")
 
+    # Parse arguments
     args = parser.parse_args()
 
+    # Set random seed
     global_seed = np.random.randint(1, 2**31 - 1) if args.seed == None else args.seed
     np.random.seed(global_seed)
 
     ##################################  Extract data ##################################
-
     X = []
     dataFile = args.f
     dataFilename = os.path.splitext(os.path.basename(dataFile.name))[0]
@@ -249,27 +252,25 @@ if __name__ == "__main__":
     N = len(X)
     D = len(X[0])
 
-    # model parameters
+    # Model parameters
     K_max_BIC = 50 if args.k == None else args.k
     n_iter = 50 if args.i == None else args.i
-
     training_runs = 1 if args.r == None else args.r
 
     print(f"\nRunning {os.path.basename(__file__)} on {dataFilename} with global seed: {global_seed}")
     print(f"N: {N}, D: {D}, K: {K_max_BIC}, Iterations: {n_iter}, Global seed: {global_seed}\n")
 
-    ################################## Set hyper-parameters  ################################## (can we look at the data to set hyperparameters?)
+    ################################## Set hyper-parameters ##################################
     alpha = 1.0 
     m_0 = np.zeros(D)
     k_0 = 0.03 
     v_0 = D + 3
-    S_0 = 0.3*v_0*np.ones(D)
+    S_0 = 0.3 * v_0 * np.ones(D)
    
-    # just storing it in an object
+    # Create prior object
     prior = utils.NIchi2(m_0, k_0, v_0, S_0)
 
     ################################## Model ##################################
-
     if args.p:
         toDisplay = True
     else:
@@ -280,37 +281,30 @@ if __name__ == "__main__":
     trueFile = args.t
     if trueFile:
         trueAssignments = np.array([int(line.strip()) for line in trueFile])
-
-        # # print(trueAssignments, sep=",")
-        # bayesgmm = bayesGMM(X, prior, alpha, trueAssignments, 1)
-        # bayesgmm.gibbs_sampler(n_iter, -1)
     else:
         trueAssignments = []
 
+    max_post = -1 * np.inf
+    least_BIC = -1 * np.inf
 
-    max_post = -1*np.inf
-    least_BIC = -1*np.inf
+    # Run training with different initial assignments
     for i in range(training_runs):
-        print(f"\nRun:  {i+1}")
+        print(f"\nRun:  {i + 1}")
 
         starting_assignments = []
         while len(set(starting_assignments)) != K_max_BIC:
             starting_assignments = np.random.randint(0, K_max_BIC, N)
 
-        # params_true = pickle.load(open("../data_n1000_d10_k10_m2.0_c2.1_catD0_catM4_seed1616.trueParamPickle", "rb"))
-        # starting_assignments = params_true['z']
-        # starting_assignments = params_true = np.array(json.load(open("../Z_true.json", "rb"))['z'])
-        # starting_assignments = pickle.load(open("../data_n1000_d0_k5_m2.1_c2.1_catD1_catM4_seed23.trueParamPickle", "rb"))['z']
-
+        # Initialize and run the Bayesian GMM
         bayesgmm = bayesGMM(X, prior, alpha, starting_assignments)
         bayesgmm.gibbs_sampler(n_iter, i, trueAssignments=trueAssignments, toPrint=toDisplay, greedyRun=False, savePosterior=False)
         
+        # Track the best model based on BIC score
         if bayesgmm.BIC > least_BIC:
             least_BIC = bayesgmm.BIC
-            best_bayesgmm =bayesgmm
+            best_bayesgmm = bayesgmm
 
     ##################################  Model results ##################################
-
     z_pred_map = best_bayesgmm.z_map
     predicted_K = len(set(z_pred_map))
 
@@ -319,6 +313,7 @@ if __name__ == "__main__":
     mu_pred = []
     sigma_pred = []
 
+    # Store predictions
     preds = {
         "mu": mu_pred,
         "sigma": np.array(sigma_pred),
@@ -328,8 +323,7 @@ if __name__ == "__main__":
     }
     
     ##################################  Save results ##################################
-
-    outDir = "outGauss" if args.o == None else args.o
+    outDir = "outGauss" if args.o is None else args.o
 
     if outDir not in os.listdir():
         os.mkdir(outDir)
@@ -337,6 +331,7 @@ if __name__ == "__main__":
     outputFileName = f"{dataFilename}"    
     outputFilePath = f"{outDir}/{outputFileName}.txt"
 
+    # Save results to text file
     with open(outputFilePath, "w") as wFile:
         wFile.write(f"N: {N}\n")
         wFile.write(f"D: {D}\n")
@@ -344,13 +339,11 @@ if __name__ == "__main__":
         wFile.write(f"Seed: {global_seed}\n")
         wFile.write(f"Iterations: {n_iter}\n")
         wFile.write(f"alpha: {alpha}\n")
-        wFile.write(f"time: {time.perf_counter() - model_start_time}")
-
+        wFile.write(f"time: {time.perf_counter() - model_start_time}\n")
         wFile.write(f"BIC score: {best_bayesgmm.BIC}\n")
         wFile.write(f"log max posterior: {best_bayesgmm.log_max_post}\n")
         wFile.write(f"MAP assignments: {best_bayesgmm.z_map}\n")
         wFile.write(f"Last iteration assignments: {best_bayesgmm.clusters.assignments}\n")
-    
         wFile.write("m_0:")
         np.savetxt(wFile, m_0)
         wFile.write(f"k_0: {k_0}\n")
@@ -358,12 +351,15 @@ if __name__ == "__main__":
         wFile.write("S_0:")
         np.savetxt(wFile, S_0)
 
+    # Save predictions to pickle file
     outputFile = open(f"{outDir}/{outputFileName}.p", "wb")
     pickle.dump(preds, outputFile, pickle.HIGHEST_PROTOCOL)
     
+    # Save labels
     outputFile = open(f"{outDir}/{outputFileName}.labels", "wb")
     utils.saveData(outputFile.name, preds, "labels")
 
+    # Save readable labels
     with open(f"{outDir}/{outputFileName}.labels", "w") as ff:
         for z_i in z_pred_map:
             ff.write(f"{z_i}\n")
