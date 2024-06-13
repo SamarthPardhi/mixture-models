@@ -30,6 +30,7 @@ class bayesGMM():
             alpha (float): Dirichlet hyperparameter for mixing probabilities, alpha_0.
             assignments (np.array): 1D NumPy array of shape (n_samples,) containing initial cluster assignments.
         """
+
         self.trueZ = []
         self.alpha = alpha
 
@@ -66,6 +67,7 @@ class bayesGMM():
                 - 'posterior': A list of posterior probabilities for each iteration (if savePosterior is True).
                 - 'ARI': A list of ARI scores for each iteration (if trueAssignments is provided).
         """
+
         if len(trueAssignments) > 0:
             self.trueZ = trueAssignments
 
@@ -95,6 +97,7 @@ class bayesGMM():
 
             # For each data point
             for i in range(self.clusters.N):
+                
                 # If it's a greedy run, keep track of the posterior probability
                 if greedyRun:
                     old_post_prob = 0
@@ -119,7 +122,7 @@ class bayesGMM():
                 # Get f(z_i = k | z_[-i])
                 log_prob_z_k = log_prob_z_k_alpha + log_prob_x_i
 
-                # Sample new cluster identity for the data point
+                # Sample new cluster identity for the data point using Gumbel-max trick
                 k_new = np.argmax(log_prob_z_k + np.random.gumbel(0, 1, len(log_prob_z_k)))
 
                 # Track the changed clusters
@@ -204,18 +207,18 @@ class bayesGMM():
 
             print(f"{i_iter}/{n_iter}               ", end='\r')
 
-            self.BIC = self.clusters.K * (2 * self.clusters.D) * np.log(self.clusters.N) - (2 * self.log_max_post)
+        self.BIC = self.clusters.K * (2 * self.clusters.D) * np.log(self.clusters.N) - (2 * self.log_max_post)
 
-            print(f"\nRun: {run_id + 1}, K:{len(set(self.z_map))}, BIC: {self.BIC}, logmax post: {self.log_max_post}, max_post_iter: {self.iter_map}")
+        print(f"\nRun: {run_id + 1}, K:{len(set(self.z_map))}, BIC: {self.BIC}, logmax post: {self.log_max_post}, max_post_iter: {self.iter_map}")
 
-            postData = {
-                "run": run_id,
-                "n_iter": n_iter,
-                "posterior": posteriorList,
-                "ARI": ARI_list
-            }
+        postData = {
+            "run": run_id,
+            "n_iter": n_iter,
+            "posterior": posteriorList,
+            "ARI": ARI_list
+        }
 
-            return postData                    
+        return postData                    
         
 
 if __name__ == "__main__":
