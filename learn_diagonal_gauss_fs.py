@@ -51,6 +51,7 @@ class bayesGMM_FS():
 
 
     def gibbs_sampler(self, n_iter, run_id, toPrint=True, savePosterior=False, trueAssignments=[], greedyRun = False):
+        
         """
         Run the Gibbs sampler for the Bayesian GMM.
 
@@ -61,13 +62,7 @@ class bayesGMM_FS():
             savePosterior (bool, optional): If True, save the posterior score for each data step in each iteration. Default is False.
             trueAssignments (list, optional): Ground truth cluster assignments for calculating Adjusted Rand Index (ARI). Default is an empty list.
             greedyRun (bool, optional): If True, initialize with previous MAP assignments. Default is False.
-
-        Returns:
-            dict: A dictionary containing the following keys:
-                - 'run': The run_id value.
-                - 'n_iter': The n_iter value.
-                - 'posterior': A list of posterior probabilities for each iteration (if savePosterior is True).
-                - 'ARI': A list of ARI scores for each iteration (if trueAssignments is provided).
+        
         """
         
         if toPrint:
@@ -122,10 +117,10 @@ class bayesGMM_FS():
                 # Calculate f(z_i = k | z_[-i], alpha)
                 log_prob_z_k_alpha = np.log(self.clusters.counts + self.alpha / self.clusters.K_max ) - np.log(self.clusters.N + self.alpha - 1)
 
-                # Calculate f(x_i | X[-i], z_i = k, z_[-i], Beta)
+                # Calculate f(x_i | X[-i], z_i = k, z_[-i], Beta, FS)
                 log_prob_x_i = self.clusters.log_post_pred0(i)
 
-                # Get f(z_i = k | z_[-i])
+                # Get f(z_i = k | z_[-i], FS)
                 log_prob_z_k = log_prob_z_k_alpha + log_prob_x_i
 
                 # Sample new cluster identity for the data point using Gumbel-max trick
@@ -185,9 +180,11 @@ class bayesGMM_FS():
 
             # Check if feature selection (FS) is enabled
             if self.FS:
+
                 # Set the lambda parameter
+                # lamb = self.clusters.get_opt_lambda()
                 lamb = 200
-                
+      
                 # Calculate log probabilities for unimportant and important features
                 log_prob_unimp = self.clusters.log_prob_unimp_marginal(lamb)
                 log_prob_imp = self.clusters.log_prob_imp_marginal(lamb)
@@ -316,7 +313,7 @@ if __name__ == "__main__":
         X.append(np.array([float(i) for i in line.strip().split(',')]))
     X = np.array(X)
 
-    # Uncomment the following line if you need to exclude some initial columns
+    # Uncomment the following line if you need to exclude some initial columns (if testing with noisy data :))
     # X = X[:, 4:]
     
     N = len(X)  # Number of data points
@@ -332,7 +329,7 @@ if __name__ == "__main__":
     print(f"N: {N}, D: {D}, K: {K_max_BIC}, Iterations: {n_iter}, Global seed: {global_seed}\n")
 
     ################################## Set hyper-parameters ##################################
-    # Set hyperparameters for the Gaussian mixture model
+    # Set hyperparameters for the model
     alpha = 1.0 
     m_0 = np.zeros(D)
     k_0 = 0.1 
@@ -345,10 +342,16 @@ if __name__ == "__main__":
     ################################## Model ##################################
     
     # Check if results should be printed during Gibbs sampling
-    toDisplay = args.p
+    if args.p:
+        toDisplay = True
+    else:
+        toDisplay = False
     
     # Check if feature selection is enabled
-    FS = args.fs
+    if args.fs:
+        FS = True
+    else:
+        FS = False
 
     # Load true feature importance if provided
     true_features = []
@@ -472,7 +475,6 @@ if __name__ == "__main__":
             ff1.write(",".join(data_vec) + '\n')
 
     # Print locations of the saved results
-   
     print(f"The encoded results are saved in: {outDir}/{outputFileName}.p\n")
     print(f"The readable feature importance are saved in: {outDir}/{outputFileName}.features\n")
     print(f"The readable results are saved in: {outputFilePath}\n")

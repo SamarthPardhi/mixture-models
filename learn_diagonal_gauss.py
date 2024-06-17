@@ -13,14 +13,14 @@ from scipy.special import logsumexp
 
 class bayesGMM():
     """
-    Bayesian Gaussian Mixture Model (GMM) with diagonal covariance matrices.
+    Gaussian Mixture Model (GMM) with diagonal covariance matrices.
 
     This class implements a Gibbs sampler for Bayesian GMM with diagonal covariance matrices.
     It initializes the model with given data, prior, and initial cluster assignments, and provides
     a method to run the Gibbs sampler for a specified number of iterations.
     """
 
-    def __init__(self, X: np.array, prior: utils.NIchi2, alpha: float, assignments: np.array):
+    def __init__(self, X: float, prior: utils.NIchi2, alpha: float, assignments: int):
         """
         Initialize the Bayesian GMM.
 
@@ -145,7 +145,7 @@ class bayesGMM():
                 if k_counts_old == 1:
                     changed_.append(K_old - 1)
 
-                # Check posterior if it's a greedy run
+                # Check posterior if it's a greedy run and the assignments (Z) are changed
                 if greedyRun and len(changed_) > 0:
                     log_post_Z_ = log_post_Z.copy()
                     old_post_i = np.sum(log_post_Z_)
@@ -265,10 +265,10 @@ if __name__ == "__main__":
 
     ################################## Set hyper-parameters ##################################
     alpha = 1.0 
-    m_0 = np.zeros(D)
-    k_0 = 0.03 
-    v_0 = D + 3
-    S_0 = 0.3 * v_0 * np.ones(D)
+    m_0 = np.zeros(D) # Mean prior
+    k_0 = 0.03 # Mean prior scaling
+    v_0 = D + 3 # Degrees of freedom for inverse chi-squared distribution
+    S_0 = 0.3 * v_0 * np.ones(D) # Scale matrix for inverse chi-squared distribution
    
     # Create prior object
     prior = utils.NIchi2(m_0, k_0, v_0, S_0)
@@ -294,16 +294,17 @@ if __name__ == "__main__":
     for i in range(training_runs):
         print(f"\nRun:  {i + 1}")
 
+        # Ensure unique initial assignments
         starting_assignments = []
         while len(set(starting_assignments)) != K_max_BIC:
             starting_assignments = np.random.randint(0, K_max_BIC, N)
 
-        # Initialize and run the Bayesian GMM
+        # Initialize and run the GMM
         bayesgmm = bayesGMM(X, prior, alpha, starting_assignments)
         bayesgmm.gibbs_sampler(n_iter, i, trueAssignments=trueAssignments, toPrint=toDisplay, greedyRun=False, savePosterior=False)
         
         # Track the best model based on BIC score
-        if bayesgmm.BIC > least_BIC:
+        if bayesgmm.BIC < least_BIC:
             least_BIC = bayesgmm.BIC
             best_bayesgmm = bayesgmm
 
