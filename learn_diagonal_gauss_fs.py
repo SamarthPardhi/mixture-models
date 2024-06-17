@@ -65,9 +65,10 @@ class bayesGMM_FS():
         
         """
         
-        if toPrint:
-            print(f"Initial features:")
-            print(self.clusters.features)
+        # Uncomment if you want to print initial features
+        # if toPrint:
+        #     print(f"Initial features:")
+        #     print(self.clusters.features)
 
         if len(trueAssignments) > 0:
             self.trueZ = trueAssignments
@@ -242,8 +243,6 @@ class bayesGMM_FS():
                     # Uncomment the following line if you want to print features
                     # print("features:\n", self.clusters.features)
 
-            # Uncomment the following line if you need a breakpoint for debugging
-            # breakpoint()
 
             # Stop the iterations if the posterior hasn't changed for several iterations
             if same_posterior_count > 3:
@@ -258,9 +257,9 @@ class bayesGMM_FS():
         # Print the final results for the run
         print(f"\nRun: {run_id + 1}, K:{len(set(self.z_map))}, BIC: {self.BIC}, logmax post: {self.log_max_post}, max_post_iter: {self.iter_map}")
 
-        # Print final feature selection results
-        print("Final features:")
-        print(self.clusters.features)
+        # Uncomment below if you want to print final feature selection results
+        # print("Final features:")
+        # print(self.clusters.features)
 
         # Prepare data for post-processing
         postData = {
@@ -286,14 +285,14 @@ if __name__ == "__main__":
 
     # Define command-line arguments
     parser.add_argument("-f", required=True, type=argparse.FileType('r'), help="Path to the file containing Gaussian mixture data")
-    parser.add_argument("-k", required=False, type=int, help="Known K or maximum number of clusters if K is unknown")
+    parser.add_argument("-k", required=False, type=int, help="Known number of clustersumber of clustersumber of clusters or maximum number of clusters if K is unknown")
     parser.add_argument("-o", required=False, type=str, help="Output directory")
     parser.add_argument("-i", required=False, type=int, help="Collapsed Gibbs sampling iterations")
     parser.add_argument("-r", required=False, type=int, help="Number of training runs with different initial assignments")
     parser.add_argument("-t", required=False, type=argparse.FileType('r'), help="Path to the true parameters file (non-pickle file)")
     parser.add_argument("-p", required=False, action="store_true", help="Print results during Gibbs sampling")
     parser.add_argument("-seed", required=False, type=int, help="Set a seed value")
-    parser.add_argument("-fs", required=False, action="store_true", help="Enable feature selection")
+    parser.add_argument("-nfs", required=False, action="store_true", help="Disable feature selection")
     parser.add_argument("-fd", required=False, type=argparse.FileType('r'), help="Path to the file containing true feature importance")
 
     # Parse command-line arguments
@@ -349,9 +348,9 @@ if __name__ == "__main__":
     
     # Check if feature selection is enabled
     if args.fs:
-        FS = True
-    else:
         FS = False
+    else:
+        FS = True
 
     # Load true feature importance if provided
     true_features = []
@@ -475,8 +474,7 @@ if __name__ == "__main__":
             ff1.write(",".join(data_vec) + '\n')
 
     # Print locations of the saved results
-    print(f"The encoded results are saved in: {outDir}/{outputFileName}.p\n")
-    print(f"The readable feature importance are saved in: {outDir}/{outputFileName}.features\n")
-    print(f"The readable results are saved in: {outputFilePath}\n")
-
-
+    print(f"The encoded results are saved in: {outDir}/{outputFileName}.p")
+    print(f"The predicted labels are saved in: {outDir}/{outputFileName}.labels")
+    print(f"The readable feature importance are saved in: {outDir}/{outputFileName}.features")
+    print(f"The readable results are saved in: {outputFilePath}")

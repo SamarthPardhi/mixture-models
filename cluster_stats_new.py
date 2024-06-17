@@ -8,7 +8,7 @@ from scipy.stats import multivariate_t
 import sys
 from scipy.stats import t
 
-# class for statistics of the clusters
+# class for statistics of the Gaussian clusters with general covariance matrix
 class gaussianClusters(object):
 
     def __init__(self, X, prior, alpha, K, assignments=None):
@@ -305,7 +305,7 @@ class gaussianClusters(object):
         self.inv_covariances[k, :, :] = inv(covar)
 
 
-# class for statistics of the clusters
+# class for statistics of the Gaussian clusters with diagonal covariance matrix
 class gaussianClustersDiag(object):
 
     def __init__(self, X, prior, alpha, K, assignments=None):
@@ -598,6 +598,7 @@ class gaussianClustersDiag(object):
         return self._cache_post_pred_coeff_prior  - ((v + 1.)/2. * (np.log(1. + 1./v * np.square(delta) * inv_var)).sum())
 
 
+# class for statistics of the categorical clusters
 class categoricalClusters(object):
 
     def __init__(self, C, alpha, gamma, K, assignments):
@@ -759,6 +760,7 @@ class categoricalClusters(object):
     # class for statistics of the clusters
 
 
+# class for the statistics of the mixed data with categorical and Gaussian features combined
 class categoricalGaussianClusters(object):
 
     def __init__(self, X, C, alpha, prior, gamma, K, assignments=None):
@@ -1064,7 +1066,7 @@ class categoricalGaussianClusters(object):
         return self._cache_post_pred_coeff_prior  - ((v + 1.)/2. * (np.log(1. + 1./v * np.square(delta) * inv_var)).sum())
 
 
-# class for statistics of the clusters
+# class for statistics of the Gassian clusters (diagonal covariance matrix) with feature selection incorporated
 class gaussianClustersDiagFS(object):
 
     def __init__(self, X, prior, alpha, K, assignments, FS, features):
@@ -1562,6 +1564,299 @@ class gaussianClustersDiagFS(object):
         return ans
 
 
+# class for statistics of the categorical clusters (diagonal covariance matrix) with feature selection incorporated
+class categoricalClustersFS(object):
+
+    def __init__(self, C, alpha, gamma, K, assignments, FS, features=[]):
+        # assignments is initial assignments of clusters
+        # K-max is the maximum number of clusters including the empty ones
+        self.N, self.D = C.shape
+        self.alpha = alpha
+        self.C = C
+        self.gamma = gamma
+        self.K_max = K
+
+        if FS:
+            if len(features) == 0:
+                # features_imp = np.ones((self.K_max, self.D), int)
+                # nf = 4
+                # features_imp[:, :nf] = np.zeros((K, nf), int)
+
+                # features_imp = np.array([[0, 1], [0, 1], [0, 1]])
+                # features_imp[:, 0], features_imp[:, 1] = features_imp[:, 1], features_imp[:, 0]
+                features_imp = np.random.randint(0, 2, (self.K_max, self.D))
+            else:
+                features_imp = features
+
+        else:
+            features_imp = np.ones((self.K_max, self.D), int)
+
+        self.Ms = np.zeros(self.D, int)
+        for d in range(self.D):
+            self.Ms[d] = len(set(C[:, d]))
+        
+        ####### partial_hyperparaneters_attr #############
+        self.counts = np.zeros(self.K_max, int)
+        self.catCounts = np.zeros((self.K_max, self.Ms.max(), self.D), int) 
+        
+
+        ####### feature selection params initialization #############
+        self.features = features_imp
+
+        self.background_catCounts = np.zeros((self.Ms.max(), self.D), int) 
+        self.background_counts = 0
+        
+        ####### hyper-parameters' attributes initialization ########
+        
+        # to avoid recomputing we will cache some log and log gamma values
+        self._cache()
+
+        # Initialization
+        self.K = 0
+
+        # assign the initial assignments
+        if type(assignments) == None: # no assignment
+            self.assignments = -1*np.ones(self.N, int)
+        else:
+            self.assignments = assignments
+            
+            # adding the assigned clusters
+            for k in range(self.assignments.max() + 1):
+                for i in np.where(self.assignments == k)[0]:
+                    self.add_assignment(i, k)
+
+
+    def _cache(self):
+
+        # pre-computing
+        self._cache_log_pi = np.log(np.pi)
+        self._cache_gammaln_alpha = gammaln(self.alpha)
+
+    def cache_cluster_stats(self, k):
+
+        # caching cluster k's statistics in a tuple
+        return (
+            self.counts[k].copy(),
+            self.catCounts[k].copy()
+            )
+
+    def restore_cluster_stats(self, k, count_N, catCount_N):
+    
+        # restore the cluster stats for the attributes
+        self.counts[k] = count_N
+        self.catCounts[k] = catCount_N
+
+
+    def add_assignment(self, i, k):
+
+        # assigning new cluster k for the ith observation
+        if k == self.K:
+            self.K += 1
+            
+        self.assignments[i] = k
+        
+        # updating the partial hyperparameters
+        for d in range(self.D):
+            self.catCounts[k][self.C[i][d]][d] += 1
+
+        self.counts[k] += 1
+
+
+    def del_assignment(self, i):
+
+        # delete the assignment and attributes of i-th data vector
+        k = self.assignments[i]
+
+        if k != -1 :
+            self.assignments[i] = -1
+            self.counts[k] -= 1
+            for d in range(self.D):
+                self.catCounts[k][self.C[i][d]][d] -= 1
+
+            if self.counts[k] == 0:
+                
+                # if cluster is empty, remove it
+                self.empty_cluster(k)
+            # else:
+
+            #     self.catCounts[k, :] -= 1
+
+
+    def empty_cluster(self, k):
+        self.K -= 1
+        if k != self.K:
+
+            self.counts[k] = self.counts[self.K]
+            self.assignments[np.where(self.assignments == self.K)] = k
+            self.catCounts[k, :] = self.catCounts[self.K, :]
+
+        # # empty out stats from last cluster
+        # self.log_det_covariances[self.K] = 0.
+        # self.inv_covariances[self.K, :, :].fill(0.)
+        # self.counts[self.K] = 0
+
+        # fill out priors stats from last cluster
+        self.counts[self.K] = 0
+
+        self.catCounts[self.K, :] = np.zeros((self.Ms.max(), self.D), int)
+
+    
+    def log_post_pred(self, i):
+        gamma_Ns = self.gamma + self.catCounts
+
+        res = np.zeros((self.K_max, self.D))
+        for d in range(self.D):
+            res[:,d] = np.log(gamma_Ns[:, self.C[i][d], d]) - np.log(self.counts + self.gamma*self.Ms[d])
+
+        return res.sum(axis=1)
+
+
+    def log_post_pred0(self, i):
+        
+        ans = np.zeros((self.K_max, self.D))
+        neg_feature_imp = 1 - self.features
+
+        counts_bg = (neg_feature_imp * self.counts[:, np.newaxis]).sum(axis = 0)
+        catCounts_bg = (neg_feature_imp[:, np.newaxis]*self.catCounts).sum(axis=0)
+        gamma_bg = self.gamma + catCounts_bg
+
+        for k in range(self.K_max):
+            gamma_Ns = self.gamma + self.catCounts[k]
+
+            for j in range(self.D):
+                if self.features[k][j] == 1:
+                
+                    ans[k][j] = np.log(gamma_Ns[self.C[i][j], j]) - np.log(self.counts[k] + self.gamma*self.Ms[j])
+                else:
+                    ans[k][j] = np.log(gamma_bg[self.C[i][j], j]) - np.log(counts_bg[j] + self.gamma*self.Ms[j])
+        # breakpoint()
+        return ans.sum(axis=1)
+
+
+    def log_prob_unimp_likelihood(self):
+        
+        gamma_Ns = self.gamma + self.catCounts
+        gamma_Ns_j = np.zeros((self.D, self.Ms.max()))
+        counts_bg = 0
+
+        for j in range(self.D):
+            for k in range(self.K):
+                if self.features[k][j] == 0:
+                    gamma_Ns_j[j] += gamma_Ns[k, :, j]    
+                    counts_bg += self.counts[k]
+
+        gamma_Ns_j = gamma_Ns_j.sum(axis=0)
+        ans = np.zeros(self.D)
+
+        for j in range(self.D):
+            for i in range(self.N):
+                ans[j] += np.log(gamma_Ns_j[self.C[i][j]]) - np.log(counts_bg + self.gamma * self.Ms.max())
+
+        return ans
+
+
+    def log_prob_unimp_marginal(self, lamb):
+
+        ans = np.zeros((self.K_max, self.D))
+        for j in range(self.D):
+            for k in range(self.K_max):
+                Ks = self.features[:, j]
+                Ks[k] = 0
+                Ks_required = 1 - Ks
+
+                catCounts_unimp = (Ks_required[:, np.newaxis]*self.catCounts[:,:, j]).sum(axis = 0)
+                counts_unimp = (Ks_required * self.counts).sum()
+
+                gamma_N = self.gamma + catCounts_unimp
+
+                post_gamma_N = gamma_N + catCounts_unimp
+
+                ans[k][j] += gammaln(gamma_N.sum()) + gammaln(post_gamma_N).sum() - gammaln(gamma_N).sum() - gammaln(counts_unimp + gamma_N.sum())
+
+                ans[k][j] -= 2*lamb
+
+        return ans
+
+    
+    def log_prob_imp_marginal(self, lamb):
+
+        ans = np.zeros((self.K_max, self.D))
+        for k in range(self.K_max):
+
+            gamma_N = self.gamma + self.catCounts[k]
+            post_gamma_N = gamma_N + self.catCounts[k]             
+
+            for j in range(self.D):
+                
+                ans[k][j] = gammaln(gamma_N[:, j].sum()) + gammaln(post_gamma_N[:, j]).sum() - gammaln(gamma_N[:, j]).sum() - gammaln(self.counts[k] + gamma_N[:, j].sum())
+                ans[k][j] -= 2*lamb
+
+        for j in range(self.D):
+            for k in range(self.K_max):
+                Ks = self.features[:, j]
+                Ks[k] = 1
+                Ks_required = 1 - Ks
+
+                if sum(Ks) != 0:
+                    catCounts_unimp = (Ks_required[:, np.newaxis]*self.catCounts[:,:, j]).sum(axis = 0)
+                    counts_unimp = (Ks_required * self.counts).sum()
+
+                    gamma_N = self.gamma + catCounts_unimp
+                    post_gamma_N = gamma_N + catCounts_unimp
+
+                    ans[k][j] += gammaln(gamma_N.sum()) + gammaln(post_gamma_N).sum() - gammaln(gamma_N).sum() - gammaln(counts_unimp + gamma_N.sum())
+                    ans[k][j] -= 2*lamb
+            
+        return ans
+
+
+    def log_prob_imp_likelihood(self):
+    
+        gamma_Ns = self.gamma + self.catCounts[:self.K]
+
+        ans = np.zeros((self.K, self.D))
+
+        for j in range(self.D):
+            for k in range(self.K):
+                for i in range(self.N):
+
+                    ans[k, j] += np.log(gamma_Ns[k, self.C[i][j], j]) - np.log(self.counts[k] + self.gamma * self.Ms.max())
+
+        return ans
+    
+
+    def get_posterior_probability_Z_k(self, k):
+        gamma_N = self.gamma + self.catCounts[k]
+        post_gamma_N = gamma_N + self.catCounts[k]
+        
+        log_post_Z = np.zeros((self.D))
+        for d in range(self.D):
+            
+            log_post_Z[d] = gammaln(gamma_N[:, d].sum()) + gammaln(post_gamma_N[:, d]).sum() - gammaln(gamma_N[:, d]).sum() - gammaln(self.counts[k] + gamma_N[:, d].sum())
+            # log_post_Z[d] = gammaln(self.gamma * self.Ms[d]) +  gammaln(gamma_N[:, d]).sum() - self.Ms[d] * gammaln(self.gamma) -  gammaln(self.gamma * self.Ms[d] + self.counts[k])
+            # log_post_Z[d] = gammaln(gamma_N[:, d]).sum() -  gammaln(self.gamma * self.Ms[d] + self.counts[k])
+        return log_post_Z.sum() + gammaln(self.alpha/self.K_max + self.counts[k])
+
+
+    # return 0
+    
+        if k >= self.K:
+            return gammaln(self.alpha/self.K_max) 
+        
+        else:
+            gamma_N = self.gamma + self.catCounts[k]
+            log_post_Z = np.zeros((self.D))
+            for d in range(self.D):
+                # log_post_Z[d] = gammaln(self.gamma * self.Ms[d]) +  gammaln(gamma_N[:, d]).sum() - self.Ms[d] * gammaln(self.gamma) -  gammaln(self.gamma * self.Ms[d] + self.counts[k])
+                log_post_Z[d] = gammaln(gamma_N[:, d]).sum() -  gammaln(self.gamma * self.Ms[d] + self.counts[k])
+
+
+            return log_post_Z.sum()
+
+
+
+########### T R A S H ##################### T R A S H ############# T R A S H ################ T R A S H ############### T R A S H ############ T R A S H ############# T R A S H ############ T R A S H ############ T R A S H ################      
+        
 # class poissonClustersDiag(object):
 
 #     def __init__(self, X, prior, alpha, K, assignments=None):
@@ -1851,293 +2146,3 @@ class gaussianClustersDiagFS(object):
 #         delta = self.X[i, :] - mu
 
 #         return self._cache_post_pred_coeff_prior  - ((v + 1.)/2. * (np.log(1. + 1./v * np.square(delta) * inv_var)).sum())
-
-
-class categoricalClustersFS(object):
-
-    def __init__(self, C, alpha, gamma, K, assignments, FS, features=[]):
-        # assignments is initial assignments of clusters
-        # K-max is the maximum number of clusters including the empty ones
-        self.N, self.D = C.shape
-        self.alpha = alpha
-        self.C = C
-        self.gamma = gamma
-        self.K_max = K
-
-        if FS:
-            if len(features) == 0:
-                # features_imp = np.ones((self.K_max, self.D), int)
-                # nf = 4
-                # features_imp[:, :nf] = np.zeros((K, nf), int)
-
-                # features_imp = np.array([[0, 1], [0, 1], [0, 1]])
-                # features_imp[:, 0], features_imp[:, 1] = features_imp[:, 1], features_imp[:, 0]
-                features_imp = np.random.randint(0, 2, (self.K_max, self.D))
-            else:
-                features_imp = features
-
-        else:
-            features_imp = np.ones((self.K_max, self.D), int)
-
-        self.Ms = np.zeros(self.D, int)
-        for d in range(self.D):
-            self.Ms[d] = len(set(C[:, d]))
-        
-        ####### partial_hyperparaneters_attr #############
-        self.counts = np.zeros(self.K_max, int)
-        self.catCounts = np.zeros((self.K_max, self.Ms.max(), self.D), int) 
-        
-
-        ####### feature selection params initialization #############
-        self.features = features_imp
-
-        self.background_catCounts = np.zeros((self.Ms.max(), self.D), int) 
-        self.background_counts = 0
-        
-        ####### hyper-parameters' attributes initialization ########
-        
-        # to avoid recomputing we will cache some log and log gamma values
-        self._cache()
-
-        # Initialization
-        self.K = 0
-
-        # assign the initial assignments
-        if type(assignments) == None: # no assignment
-            self.assignments = -1*np.ones(self.N, int)
-        else:
-            self.assignments = assignments
-            
-            # adding the assigned clusters
-            for k in range(self.assignments.max() + 1):
-                for i in np.where(self.assignments == k)[0]:
-                    self.add_assignment(i, k)
-
-
-    def _cache(self):
-
-        # pre-computing
-        self._cache_log_pi = np.log(np.pi)
-        self._cache_gammaln_alpha = gammaln(self.alpha)
-
-    def cache_cluster_stats(self, k):
-
-        # caching cluster k's statistics in a tuple
-        return (
-            self.counts[k].copy(),
-            self.catCounts[k].copy()
-            )
-
-    def restore_cluster_stats(self, k, count_N, catCount_N):
-    
-        # restore the cluster stats for the attributes
-        self.counts[k] = count_N
-        self.catCounts[k] = catCount_N
-
-
-    def add_assignment(self, i, k):
-
-        # assigning new cluster k for the ith observation
-        if k == self.K:
-            self.K += 1
-            
-        self.assignments[i] = k
-        
-        # updating the partial hyperparameters
-        for d in range(self.D):
-            self.catCounts[k][self.C[i][d]][d] += 1
-
-        self.counts[k] += 1
-
-
-    def del_assignment(self, i):
-
-        # delete the assignment and attributes of i-th data vector
-        k = self.assignments[i]
-
-        if k != -1 :
-            self.assignments[i] = -1
-            self.counts[k] -= 1
-            for d in range(self.D):
-                self.catCounts[k][self.C[i][d]][d] -= 1
-
-            if self.counts[k] == 0:
-                
-                # if cluster is empty, remove it
-                self.empty_cluster(k)
-            # else:
-
-            #     self.catCounts[k, :] -= 1
-
-
-    def empty_cluster(self, k):
-        self.K -= 1
-        if k != self.K:
-
-            self.counts[k] = self.counts[self.K]
-            self.assignments[np.where(self.assignments == self.K)] = k
-            self.catCounts[k, :] = self.catCounts[self.K, :]
-
-        # # empty out stats from last cluster
-        # self.log_det_covariances[self.K] = 0.
-        # self.inv_covariances[self.K, :, :].fill(0.)
-        # self.counts[self.K] = 0
-
-        # fill out priors stats from last cluster
-        self.counts[self.K] = 0
-
-        self.catCounts[self.K, :] = np.zeros((self.Ms.max(), self.D), int)
-
-    
-    def log_post_pred(self, i):
-        gamma_Ns = self.gamma + self.catCounts
-
-        res = np.zeros((self.K_max, self.D))
-        for d in range(self.D):
-            res[:,d] = np.log(gamma_Ns[:, self.C[i][d], d]) - np.log(self.counts + self.gamma*self.Ms[d])
-
-        return res.sum(axis=1)
-
-
-    def log_post_pred0(self, i):
-        
-        ans = np.zeros((self.K_max, self.D))
-        neg_feature_imp = 1 - self.features
-
-        counts_bg = (neg_feature_imp * self.counts[:, np.newaxis]).sum(axis = 0)
-        catCounts_bg = (neg_feature_imp[:, np.newaxis]*self.catCounts).sum(axis=0)
-        gamma_bg = self.gamma + catCounts_bg
-
-        for k in range(self.K_max):
-            gamma_Ns = self.gamma + self.catCounts[k]
-
-            for j in range(self.D):
-                if self.features[k][j] == 1:
-                
-                    ans[k][j] = np.log(gamma_Ns[self.C[i][j], j]) - np.log(self.counts[k] + self.gamma*self.Ms[j])
-                else:
-                    ans[k][j] = np.log(gamma_bg[self.C[i][j], j]) - np.log(counts_bg[j] + self.gamma*self.Ms[j])
-        # breakpoint()
-        return ans.sum(axis=1)
-
-
-    def log_prob_unimp_likelihood(self):
-        
-        gamma_Ns = self.gamma + self.catCounts
-        gamma_Ns_j = np.zeros((self.D, self.Ms.max()))
-        counts_bg = 0
-
-        for j in range(self.D):
-            for k in range(self.K):
-                if self.features[k][j] == 0:
-                    gamma_Ns_j[j] += gamma_Ns[k, :, j]    
-                    counts_bg += self.counts[k]
-
-        gamma_Ns_j = gamma_Ns_j.sum(axis=0)
-        ans = np.zeros(self.D)
-
-        for j in range(self.D):
-            for i in range(self.N):
-                ans[j] += np.log(gamma_Ns_j[self.C[i][j]]) - np.log(counts_bg + self.gamma * self.Ms.max())
-
-        return ans
-
-
-    def log_prob_unimp_marginal(self, lamb):
-
-        ans = np.zeros((self.K_max, self.D))
-        for j in range(self.D):
-            for k in range(self.K_max):
-                Ks = self.features[:, j]
-                Ks[k] = 0
-                Ks_required = 1 - Ks
-
-                catCounts_unimp = (Ks_required[:, np.newaxis]*self.catCounts[:,:, j]).sum(axis = 0)
-                counts_unimp = (Ks_required * self.counts).sum()
-
-                gamma_N = self.gamma + catCounts_unimp
-
-                post_gamma_N = gamma_N + catCounts_unimp
-
-                ans[k][j] += gammaln(gamma_N.sum()) + gammaln(post_gamma_N).sum() - gammaln(gamma_N).sum() - gammaln(counts_unimp + gamma_N.sum())
-
-                ans[k][j] -= 2*lamb
-
-        return ans
-
-    
-    def log_prob_imp_marginal(self, lamb):
-
-        ans = np.zeros((self.K_max, self.D))
-        for k in range(self.K_max):
-
-            gamma_N = self.gamma + self.catCounts[k]
-            post_gamma_N = gamma_N + self.catCounts[k]             
-
-            for j in range(self.D):
-                
-                ans[k][j] = gammaln(gamma_N[:, j].sum()) + gammaln(post_gamma_N[:, j]).sum() - gammaln(gamma_N[:, j]).sum() - gammaln(self.counts[k] + gamma_N[:, j].sum())
-                ans[k][j] -= 2*lamb
-
-        for j in range(self.D):
-            for k in range(self.K_max):
-                Ks = self.features[:, j]
-                Ks[k] = 1
-                Ks_required = 1 - Ks
-
-                if sum(Ks) != 0:
-                    catCounts_unimp = (Ks_required[:, np.newaxis]*self.catCounts[:,:, j]).sum(axis = 0)
-                    counts_unimp = (Ks_required * self.counts).sum()
-
-                    gamma_N = self.gamma + catCounts_unimp
-                    post_gamma_N = gamma_N + catCounts_unimp
-
-                    ans[k][j] += gammaln(gamma_N.sum()) + gammaln(post_gamma_N).sum() - gammaln(gamma_N).sum() - gammaln(counts_unimp + gamma_N.sum())
-                    ans[k][j] -= 2*lamb
-            
-        return ans
-
-
-    def log_prob_imp_likelihood(self):
-    
-        gamma_Ns = self.gamma + self.catCounts[:self.K]
-
-        ans = np.zeros((self.K, self.D))
-
-        for j in range(self.D):
-            for k in range(self.K):
-                for i in range(self.N):
-
-                    ans[k, j] += np.log(gamma_Ns[k, self.C[i][j], j]) - np.log(self.counts[k] + self.gamma * self.Ms.max())
-
-        return ans
-    
-
-    def get_posterior_probability_Z_k(self, k):
-        gamma_N = self.gamma + self.catCounts[k]
-        post_gamma_N = gamma_N + self.catCounts[k]
-        
-        log_post_Z = np.zeros((self.D))
-        for d in range(self.D):
-            
-            log_post_Z[d] = gammaln(gamma_N[:, d].sum()) + gammaln(post_gamma_N[:, d]).sum() - gammaln(gamma_N[:, d]).sum() - gammaln(self.counts[k] + gamma_N[:, d].sum())
-            # log_post_Z[d] = gammaln(self.gamma * self.Ms[d]) +  gammaln(gamma_N[:, d]).sum() - self.Ms[d] * gammaln(self.gamma) -  gammaln(self.gamma * self.Ms[d] + self.counts[k])
-            # log_post_Z[d] = gammaln(gamma_N[:, d]).sum() -  gammaln(self.gamma * self.Ms[d] + self.counts[k])
-        return log_post_Z.sum() + gammaln(self.alpha/self.K_max + self.counts[k])
-
-
-    # return 0
-    
-        if k >= self.K:
-            return gammaln(self.alpha/self.K_max) 
-        
-        else:
-            gamma_N = self.gamma + self.catCounts[k]
-            log_post_Z = np.zeros((self.D))
-            for d in range(self.D):
-                # log_post_Z[d] = gammaln(self.gamma * self.Ms[d]) +  gammaln(gamma_N[:, d]).sum() - self.Ms[d] * gammaln(self.gamma) -  gammaln(self.gamma * self.Ms[d] + self.counts[k])
-                log_post_Z[d] = gammaln(gamma_N[:, d]).sum() -  gammaln(self.gamma * self.Ms[d] + self.counts[k])
-
-
-            return log_post_Z.sum()
-        

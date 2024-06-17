@@ -219,7 +219,7 @@ if __name__ == "__main__":
 
     # Define the required and optional arguments for the script
     parser.add_argument("-f", required=True, type=argparse.FileType('r'), help="Path to the file containing gauusian mixture data")
-    parser.add_argument("-k", required=True, type=int, help="Known K and if it's unknown Maximum number of clusters (Or your guess that the number of clusters can't be more than that)")
+    parser.add_argument("-k", required=True, type=int, help="Known number of clusters and if it's unknown Maximum number of clusters (Or your guess that the number of clusters can't be more than that)")
     parser.add_argument("-o", required=False, type=str, help="Output directory")
     parser.add_argument("-i", required=False, type=int, help="Collapsed Gibbs sampling iterations")
     parser.add_argument("-r", required=False, type=int, help="Number of training runs to run with different initial assignments")
@@ -271,8 +271,8 @@ if __name__ == "__main__":
     trueFile = args.t
     if trueFile:
         trueAssignments = np.array([int(line.strip()) for line in trueFile])
-        bayesgmm = catMM(C, alpha, gamma, trueAssignments, 1)
-        bayesgmm.gibbs_sampler(n_iter, -1)
+        # bayesgmm = catMM(C, alpha, gamma, trueAssignments, 1)
+        # bayesgmm.gibbs_sampler(n_iter, -1)
     else:
         trueAssignments = []
 
@@ -353,9 +353,14 @@ if __name__ == "__main__":
     outputFile = open(f"{outDir}/{outputFileName}.p", "wb")
     pickle.dump(preds, outputFile, pickle.HIGHEST_PROTOCOL)
 
+    # Save labels
+    outputFile = open(f"{outDir}/{outputFileName}.labels", "wb")
+    utils.saveData(outputFile.name, z_pred_map, "labels")
+
     # Print locations of the saved results
-    print(f"The encoded results are saved in: {outDir}/{outputFileName}.p\n")
-    print(f"The readable results are saved in: {outputFilePath}\n")
+    print(f"The predicted labels are saved in: {outDir}/{outputFileName}.labels")
+    print(f"The encoded results are saved in: {outDir}/{outputFileName}.p")
+    print(f"The readable results are saved in: {outputFilePath}")
 
 
 
@@ -485,7 +490,7 @@ if __name__ == "__main__":
 #     parser = argparse.ArgumentParser()
 
 #     parser.add_argument("-f", required=True, type=argparse.FileType('r'), help="Path to the file containing gauusian mixture data")
-#     parser.add_argument("-k", required=True, type=int, help="Known K and if it's unknown Maximum number of clusters (Or your guess that the number of clusters can't be more than that)")
+#     parser.add_argument("-k", required=True, type=int, help="Known number of clusters and if it's unknown Maximum number of clusters (Or your guess that the number of clusters can't be more than that)")
 #     parser.add_argument("-o", required=False, type=str, help="Output directory")
 #     parser.add_argument("-i", required=False, type=int, help="Collapsed Gibbs sampling iterations")
 #     parser.add_argument("-r", required=False, type=int, help="Number of training runs to run with different initial assignments")

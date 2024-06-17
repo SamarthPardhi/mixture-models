@@ -122,7 +122,7 @@ if __name__ == "__main__":
     # Set up argument parser
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", required=True, type=argparse.FileType('r'), help="Path to the file containing Gaussian mixture data")
-    parser.add_argument("-k", required=True, type=int, help="Known K or maximum number of clusters")
+    parser.add_argument("-k", required=True, type=int, help="Known number of clusters or maximum number of clusters")
     parser.add_argument("-o", required=False, type=str, help="Output directory")
     parser.add_argument("-i", required=False, type=int, help="Collapsed Gibbs sampling iterations")
     parser.add_argument("-r", required=False, type=int, help="Number of training runs with different initial assignments")

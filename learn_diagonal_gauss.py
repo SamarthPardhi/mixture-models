@@ -229,7 +229,7 @@ if __name__ == "__main__":
 
     # Define the required and optional arguments for the script
     parser.add_argument("-f", required=True, type=argparse.FileType('r'), help="Path to the file containing gaussian mixture data")
-    parser.add_argument("-k", required=False, type=int, help="Known K or the maximum number of clusters")
+    parser.add_argument("-k", required=False, type=int, help="Known number of clusters or the maximum number of clusters")
     parser.add_argument("-o", required=False, type=str, help="Output directory")
     parser.add_argument("-i", required=False, type=int, help="Number of Gibbs sampling iterations")
     parser.add_argument("-r", required=False, type=int, help="Number of training runs with different initial assignments")
@@ -288,7 +288,7 @@ if __name__ == "__main__":
         trueAssignments = []
 
     max_post = -1 * np.inf
-    least_BIC = -1 * np.inf
+    least_BIC = 1 * np.inf
 
     # Run training with different initial assignments
     for i in range(training_runs):
@@ -361,13 +361,8 @@ if __name__ == "__main__":
     
     # Save labels
     outputFile = open(f"{outDir}/{outputFileName}.labels", "wb")
-    utils.saveData(outputFile.name, preds, "labels")
+    utils.saveData(outputFile.name, z_pred_map, "labels")
 
-    # Save readable labels
-    with open(f"{outDir}/{outputFileName}.labels", "w") as ff:
-        for z_i in z_pred_map:
-            ff.write(f"{z_i}\n")
-
-    print(f"The encoded results are saved in: {outDir}/{outputFileName}.p\n")
-    print(f"The encoded results are saved in: {outDir}/{outputFileName}.labels\n")
-    print(f"The readable results are saved in: {outputFilePath}\n")
+    print(f"The predicted labels are saved in: {outDir}/{outputFileName}.labels")
+    print(f"The encoded results are saved in: {outDir}/{outputFileName}.p")
+    print(f"The readable results are saved in: {outputFilePath}")

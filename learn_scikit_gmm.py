@@ -6,6 +6,7 @@ import os
 import pickle
 import time
 from sklearn.metrics.cluster import adjusted_rand_score
+import utils
 
 # Record the start time of the model
 model_start_time = time.perf_counter()
@@ -17,7 +18,7 @@ np.random.seed(global_seed)
 # Set up argument parser for command-line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("-f", required=True, type=argparse.FileType('r'), help="Path to the file containing Gaussian mixture data")
-parser.add_argument("-k", required=False, type=int, help="Known K or maximum number of clusters if unknown")
+parser.add_argument("-k", required=False, type=int, help="Known number of clusters or maximum number of clusters if unknown")
 parser.add_argument("-i", required=False, type=int, help="Number of Gibbs sampling iterations")
 parser.add_argument("-o", required=False, type=str, help="Output directory")
 parser.add_argument("-r", required=False, type=int, help="Number of training runs with different initial assignments")
@@ -60,6 +61,7 @@ if trueFile:
     best_gmm.fit(X)
     print(f"K: {K}, BIC: {best_gmm.bic(X)}")
     z_pred = best_gmm.predict(X)
+    
 else:
     # If true labels are not provided, use BIC to determine the optimal number of clusters
     minK = 2
@@ -100,14 +102,14 @@ outputFileName = f"{dataFilename}"
 outputFile = open(f"{outDir}/{outputFileName}.p", "wb")
 pickle.dump(preds, outputFile, pickle.HIGHEST_PROTOCOL)
 
+# Save predicted labels
+outputFile = open(f"{outDir}/{outputFileName}.labels", "wb")
+utils.saveData(outputFile.name, z_pred, "labels")
+
 # Print the Adjusted Rand Index (ARI) if true labels are available
 if trueFile:
     print(f"ARI: {adjusted_rand_score(preds['z'], trueAssignments)}")
 
 # Print the location of the saved results
-print(f"The encoded results are saved in: {outDir}/{outputFileName}.p\n")
-
-# Save the results again (redundant code, can be removed)
-outputFileName = f"{dataFilename}"
-outputFile = open(f"{outDir}/{outputFileName}.p", "wb")
-pickle.dump(preds, outputFile, pickle.HIGHEST_PROTOCOL)
+print(f"The encoded results are saved in: {outDir}/{outputFileName}.p")
+print(f"The predicted results are saved in: {outDir}/{outputFileName}.labels")

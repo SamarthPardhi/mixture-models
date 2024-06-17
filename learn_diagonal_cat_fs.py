@@ -72,10 +72,10 @@ class catMM():
         
         """
 
-
-        if toPrint:
-            print(f"Initial features:")
-            print(self.clusters.features)
+        # Uncomment this to print initial features
+        # if toPrint:
+        #     print(f"Initial features:")
+        #     print(self.clusters.features)
 
         if len(trueAssignments) > 0:
             self.trueZ = trueAssignments
@@ -261,14 +261,14 @@ if __name__ == "__main__":
 
     # Define command-line arguments
     parser.add_argument("-f", required=True, type=argparse.FileType('r'), help="Path to the file containing gauusian mixture data")
-    parser.add_argument("-k", required=True, type=int, help="Known K and if it's unknown Maximum number of clusters (Or your guess that the number of clusters can't be more than that)")
+    parser.add_argument("-k", required=True, type=int, help="Known number of clusters and if it's unknown Maximum number of clusters (Or your guess that the number of clusters can't be more than that)")
     parser.add_argument("-o", required=False, type=str, help="Output directory")
     parser.add_argument("-i", required=False, type=int, help="Collapsed Gibbs sampling iterations")
     parser.add_argument("-r", required=False, type=int, help="Number of training runs to run with different initial assignments")
     parser.add_argument("-t", required=False, type=argparse.FileType('r'), help="Path to the true parameters file (non-pickle file)")
     parser.add_argument("-p", required=False, action="store_true", help="Will print results while Gibbs sampling")
     parser.add_argument("-seed", required=False, type=int, help="set a seed value")
-    parser.add_argument("-fs", required=False, action="store_true", help="Add this flag if you want to do feature selection")
+    parser.add_argument("-nfs", required=False, action="store_true", help="Disable feature selection")
 
     # Parse command-line arguments
     args = parser.parse_args()
@@ -318,9 +318,9 @@ if __name__ == "__main__":
 
     # Check if feature selection is enabled
     if args.fs:
-        FS = True
-    else:
         FS = False
+    else:
+        FS = True
 
     print(f"Total training runs: {training_runs}")
 
@@ -411,7 +411,11 @@ if __name__ == "__main__":
     outputFile = open(f"{outDir}/{outputFileName}.p", "wb")
     pickle.dump(preds, outputFile, pickle.HIGHEST_PROTOCOL)
 
-    # Print locations of the saved results
-    print(f"The encoded results are saved in: {outDir}/{outputFileName}.p\n")
-    print(f"The readable results are saved in: {outputFilePath}\n")
+    # Save labels
+    outputFile = open(f"{outDir}/{outputFileName}.labels", "wb")
+    utils.saveData(outputFile.name, z_pred_map, "labels")
 
+    # Print locations of the saved results
+    print(f"The predicted labels are saved in: {outDir}/{outputFileName}.labels")
+    print(f"The encoded results are saved in: {outDir}/{outputFileName}.p")
+    print(f"The readable results are saved in: {outputFilePath}")
