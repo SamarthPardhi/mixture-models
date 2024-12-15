@@ -347,7 +347,7 @@ if __name__ == "__main__":
         toDisplay = False
     
     # Check if feature selection is enabled
-    if args.fs:
+    if args.nfs:
         FS = False
     else:
         FS = True
@@ -427,7 +427,7 @@ if __name__ == "__main__":
 
     # Determine output directory
     if args.o is None:
-        if args.fs:
+        if args.nfs:
             outDir = "outGaussFS"
         else:
             outDir = "outGaussNoisey"
