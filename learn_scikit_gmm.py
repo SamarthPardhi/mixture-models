@@ -68,7 +68,7 @@ else:
     maxK = args.k
     print(f"Implementing BIC for k = {minK}, ..., {maxK}\n")
     lowest_bic_score = np.inf
-    for K in range(minK, maxK):
+    for K in range(minK, maxK + 1):
         gmm = GaussianMixture(n_components=K, n_init=training_runs * max_iterations)
         gmm.fit(X)
         print(f"K: {K}, BIC: {gmm.bic(X)}")
